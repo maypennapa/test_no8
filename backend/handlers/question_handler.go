@@ -3,39 +3,59 @@ package handlers
 import (
 	"exam-api/database"
 	"exam-api/models"
+	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
 
 func CreateQuestion(c *gin.Context) {
 	var q models.Question
-	c.BindJSON(&q)
+	if err := c.BindJSON(&q); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body", "details": err.Error()})
+		return
+	}
 
 	var count int64
-	database.DB.Model(&models.Question{}).Count(&count)
+	if err := database.DB.Model(&models.Question{}).Count(&count).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot count questions", "details": err.Error()})
+		return
+	}
 	q.Number = int(count) + 1
 
-	database.DB.Create(&q)
-	c.JSON(200, q)
+	if err := database.DB.Create(&q).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot create question", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, q)
 }
 
 func GetQuestions(c *gin.Context) {
-	var q []models.Question
-	database.DB.Order("number asc").Find(&q)
-	c.JSON(200, q)
+	var questions []models.Question
+	if err := database.DB.Order("number asc").Find(&questions).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot get questions", "details": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, questions)
 }
 
 func DeleteQuestion(c *gin.Context) {
-	id := c.Param("id")
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
 
 	if err := database.DB.Delete(&models.Question{}, id).Error; err != nil {
-		c.JSON(400, gin.H{"error": "ไม่สามารถลบคำถามได้", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot delete question", "details": err.Error()})
 		return
 	}
 
 	var questions []models.Question
 	if err := database.DB.Order("number asc").Find(&questions).Error; err != nil {
-		c.JSON(500, gin.H{"error": "ไม่สามารถดึงคำถามได้", "details": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot fetch questions", "details": err.Error()})
 		return
 	}
 
@@ -46,5 +66,5 @@ func DeleteQuestion(c *gin.Context) {
 		}
 	}
 
-	c.JSON(200, gin.H{"message": "ลบคำถามเรียบร้อย"})
+	c.JSON(http.StatusOK, gin.H{"message": "Question deleted successfully"})
 }
